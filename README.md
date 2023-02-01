@@ -88,6 +88,11 @@ $pwd
 output: 
 <Absolute path to cloned directory>/invoice-to-cash-automation
 ```
+Create the folder hierarchy to save models and log files.
+```mkdir -p models/ocr_module
+mkdir -p models/classification_module
+mkdir logs
+```
 Follow the below conda installation commands to setup the Stock environment along with the necessary packages for this model training and prediction.
 ```sh
 conda env create --file env/stock/tradepromotion-stock.yml

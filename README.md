@@ -89,7 +89,8 @@ output:
 <Absolute path to cloned directory>/invoice-to-cash-automation
 ```
 Create the folder hierarchy to save models and log files.
-```mkdir -p models/ocr_module
+```
+mkdir -p models/ocr_module
 mkdir -p models/classification_module
 mkdir logs
 ```

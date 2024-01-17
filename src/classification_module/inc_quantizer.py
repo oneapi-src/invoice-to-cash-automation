@@ -1,4 +1,4 @@
-# Copyright (C) 2022 Intel Corporation
+# Copyright (C) 2024 Intel Corporation
 # SPDX-License-Identifier: BSD-3-Clause
 import pandas as pd
 import tensorflow.compat.v1 as tf
@@ -8,6 +8,7 @@ from neural_compressor.experimental import Quantization,  common
 from neural_compressor.metric import BaseMetric
 import tp_inv_cls_data_preprocessing as inv_data_preprocessor
 import numpy as np
+import os
 
 def print_logger(log_str):
     logger = logging.getLogger(__name__)
@@ -99,14 +100,14 @@ if __name__ == "__main__":
     parser.add_argument('-l',
                         '--logfile',
                         type=str,
-                        default='log.txt',
+                        required=True,
                         help="log file to output benchmarking results to")
 
     FLAGS = parser.parse_args()
     fp32_model_path = str(FLAGS.fp32_model_path)
     test_dataset_path = str(FLAGS.test_dataset_path)
     output_model_path = str(FLAGS.output_model_path)
-  
+    output_model_path = os.path.join(output_model_path, 'quantized_model')
     if FLAGS.logfile == "":
         logging.basicConfig(level=logging.DEBUG)
     else:

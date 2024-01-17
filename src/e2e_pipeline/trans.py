@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 #coding:utf-8
-# Copyright (C) 2022 Intel Corporation
+# Copyright (C) 2024 Intel Corporation
 # SPDX-License-Identifier: BSD-3-Clause
 # pylint: disable=missing-module-docstring
 # pylint: disable=missing-class-docstring

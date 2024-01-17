@@ -1,4 +1,4 @@
-# Copyright (C) 2022 Intel Corporation
+# Copyright (C) 2024 Intel Corporation
 # SPDX-License-Identifier: BSD-3-Clause
 # pylint: disable=missing-module-docstring
 # pylint: disable=useless-import-alias
@@ -186,25 +186,21 @@ def recognize_text_batch(model, gt_text):
     #print("OCR Average Inference time taken for 1 Invoice image is {} ".format(OverallTime / 2))
     return sim_pred.strip(), OverallTime/2
 
-def load_model(model_path, intel_flag=False):
+def load_model(model_path):
     crnn_model = crnn.CRNN(config.imgH, config.nc, config.nclass, config.nh)
     print(crnn_model)
     crnn_model.load_state_dict(torch.load(model_path, map_location="cpu"))
     crnn_model.eval()
 
-    if intel_flag:
-        import intel_extension_for_pytorch as ipex
-        crnn_model = ipex.optimize(crnn_model)
-        log_filename = os.path.join('./logs/', 'Intel_E2E_inference_'+str(date)+ '.txt')
-        logging.basicConfig(filename=log_filename, level=logging.DEBUG,force=True,filemode='w')
-        logger = logging.getLogger()
-        print("Intel Pytorch Optimizations has been Enabled!")
-        logger.debug("Intel Pytorch Optimizations has been Enabled!")
-    else:
-        log_filename = os.path.join('./logs/', 'Stock_E2E_inference_'+str(date)+ '.txt')
-        logging.basicConfig(filename=log_filename, level=logging.DEBUG,force=True,filemode='w')
-        logger = logging.getLogger()
-        device = torch.device('cpu')
+    import intel_extension_for_pytorch as ipex
+    crnn_model = ipex.optimize(crnn_model)
+    if not os.path.exists('output/logs/e2e_inference'):
+        os.mkdir('output/logs/e2e_inference')
+    log_filename = os.path.join('output/logs/e2e_inference/', 'Intel_E2E_inference_'+str(date)+ '.txt')
+    logging.basicConfig(filename=log_filename, level=logging.DEBUG,force=True,filemode='w')
+    logger = logging.getLogger()
+    print("Intel Pytorch Optimizations has been Enabled!")
+    logger.debug("Intel Pytorch Optimizations has been Enabled!")
 
     return crnn_model
 
@@ -313,12 +309,6 @@ def cropImages(image_path):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument('-i',
-                        '--intel',
-                        type=int,
-                        required=False,
-                        default=0,
-                        help='use 1 for enabling intel pytorch optimizations, default is 0')
                         
     parser.add_argument('-m',
                         '--ocr_model_path',
@@ -345,14 +335,13 @@ if __name__ == "__main__":
                         help='Batch Size')        
 
     FLAGS = parser.parse_args()
-    intel_flag = FLAGS.intel
     model_path=FLAGS.ocr_model_path
     classification_model=FLAGS.cls_model_path
     test_data_path = FLAGS.test_data_path
     batch_size = FLAGS.batch_size
     
     #Load CRNN model
-    crnn_model = load_model(model_path, intel_flag)
+    crnn_model = load_model(model_path)
 
     #Process Invoices
     processInvoices(test_data_path, batch_size,crnn_model, classification_model)

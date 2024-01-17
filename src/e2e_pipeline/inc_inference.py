@@ -1,4 +1,4 @@
-# Copyright (C) 2022 Intel Corporation
+# Copyright (C) 2024 Intel Corporation
 # SPDX-License-Identifier: BSD-3-Clause
 # pylint: disable=missing-module-docstring
 # pylint: disable=useless-import-alias
@@ -185,7 +185,7 @@ def recognize_text_batch(model, gt_text):
     return sim_pred.strip(), OverallTime/2
 
 #Load OCR CRNN Int8 Model
-def load_model(fp32_crnn_model_path, quantized_crnn_model_path, intel_flag=True):
+def load_model(fp32_crnn_model_path, quantized_crnn_model_path):
     fp32_crnn_model = crnn.CRNN(config.imgH, config.nc, config.nclass, config.nh)
     fp32_crnn_model.load_state_dict(torch.load(fp32_crnn_model_path, map_location="cpu"))
     quantized_crnn_model = load(quantized_crnn_model_path, fp32_crnn_model)
@@ -193,19 +193,15 @@ def load_model(fp32_crnn_model_path, quantized_crnn_model_path, intel_flag=True)
     fp32_crnn_model.eval()
     quantized_crnn_model.eval()
 
-    if intel_flag:
-        import intel_extension_for_pytorch as ipex
-        quantized_crnn_model = ipex.optimize(quantized_crnn_model)
-        log_filename = os.path.join('./logs/', 'Intel_E2E_inference_'+str(date)+ '.txt')
-        logging.basicConfig(filename=log_filename, level=logging.DEBUG,force=True,filemode='w')
-        logger = logging.getLogger()
-        print("Intel Pytorch Optimizations has been Enabled!")
-        logger.debug("Intel Pytorch Optimizations has been Enabled!")
-    else:
-        log_filename = os.path.join('./logs/', 'Stock_E2E_inference_'+str(date)+ '.txt')
-        logging.basicConfig(filename=log_filename, level=logging.DEBUG,force=True,filemode='w')
-        logger = logging.getLogger()
-        device = torch.device('cpu')
+    import intel_extension_for_pytorch as ipex
+    quantized_crnn_model = ipex.optimize(quantized_crnn_model)
+    if not os.path.exists('output/logs/quantized_e2e_inference'):
+        os.mkdir('output/logs/quantized_e2e_inference')
+    log_filename = os.path.join('output/logs/quantized_e2e_inference/', 'Intel_E2E_inference_'+str(date)+ '.txt')
+    logging.basicConfig(filename=log_filename, level=logging.DEBUG,force=True,filemode='w')
+    logger = logging.getLogger()
+    print("Intel Pytorch Optimizations has been Enabled!")
+    logger.debug("Intel Pytorch Optimizations has been Enabled!")
 
     return quantized_crnn_model
 
@@ -314,12 +310,6 @@ def cropImages(image_path):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument('-i',
-                        '--intel',
-                        type=int,
-                        required=False,
-                        default=1,
-                        help='use 1 for enabling intel pytorch optimizations, default is 0')
                         
     parser.add_argument('-o',
                         '--ocr_fp32_model_path',
@@ -352,7 +342,6 @@ if __name__ == "__main__":
                         help='Batch Size')                    
 
     FLAGS = parser.parse_args()
-    intel_flag = FLAGS.intel
     fp32_crnn_model_path=FLAGS.ocr_fp32_model_path
     quantized_classification_model=FLAGS.cls_int8_model_path
     quantized_crnn_model_path = FLAGS.ocr_int8_model_path
@@ -360,7 +349,7 @@ if __name__ == "__main__":
     batch_size = FLAGS.batch_size
     
     #Load CRNN model
-    quantized_crnn_model = load_model(fp32_crnn_model_path, quantized_crnn_model_path, intel_flag)
+    quantized_crnn_model = load_model(fp32_crnn_model_path, quantized_crnn_model_path)
 
     #Process Invoices
     processInvoices(input_invoices_path, batch_size,quantized_crnn_model, quantized_classification_model)

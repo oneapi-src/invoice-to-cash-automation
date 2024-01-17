@@ -1,5 +1,5 @@
 # pylint: disable=missing-module-docstring
-# Copyright (C) 2022 Intel Corporation
+# Copyright (C) 2024 Intel Corporation
 # SPDX-License-Identifier: BSD-3-Clause
 from __future__ import print_function
 import argparse
@@ -27,7 +27,6 @@ config.alphabet = config.alphabet_v2
 config.nclass = len(config.alphabet) + 1
 config.keep_ratio = True
 config.use_log = True
-config.saved_model_prefix = 'CRNN-1010-WOHP'
 config.batchSize = 50
 config.workers=2
 config.adam = False
@@ -35,6 +34,7 @@ config.cuda = False
 config.ngpu = 0
 config.lr = 1e-4
 config.niter= 10
+config.saved_model_dir='output/models/ocr_module'
 
 os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 if not os.path.exists('debug_files'):
@@ -94,6 +94,7 @@ if config.cuda:
 crnn = crnn.CRNN(config.imgH, config.nc, config.nclass, config.nh)
 
 #If pretrained weights available loading weights from pretrained model else apply the initial weights
+config.pretrained_model = 'output/models/ocr_module/CRNN-1010.pth'
 if config.pretrained_model != '' and os.path.exists(config.pretrained_model):
     print('loading pretrained model from %s' % config.pretrained_model)
     crnn.load_state_dict(torch.load(config.pretrained_model, map_location="cpu"))
@@ -113,7 +114,7 @@ else:
     optimizer = optim.RMSprop(crnn.parameters(), lr=config.lr)
 
 
-def val(net, dataset, criterion, max_iter=100, intel=False):
+def val(net, dataset, criterion, max_iter=100):
     '''val function Validates the model to determine the accuracy and saves the best model
        @input params :model,dataset,criterion
     '''
@@ -129,21 +130,17 @@ def val(net, dataset, criterion, max_iter=100, intel=False):
     accuracy = num_correct / num_all
     print('ocr_acc: %f' % (accuracy))
     logger.debug('ocr_acc: %f' % (accuracy))
-    if intel:
-        env_str="intel"
-    else:
-        env_str = "stock"
     if accuracy > best_acc:
         best_acc = accuracy
-        torch.save(net.state_dict(), '{}/{}_{}.pth'.format(config.saved_model_dir, config.saved_model_prefix,env_str))
-    torch.save(net.state_dict(), '{}/{}_{}.pth'.format(config.saved_model_dir, config.saved_model_prefix,env_str))
+        torch.save(net.state_dict(), '{}/{}.pth'.format(config.saved_model_dir, config.saved_model_name))
+    torch.save(net.state_dict(), '{}/{}.pth'.format(config.saved_model_dir, config.saved_model_name))
 
 
 def trainBatch(net, criterion, optimizer):
     '''trainBatch function trains the crnn model and returns the cost
        @input params:net,criterion,optimizer
        @output param:cost '''
-    data = train_iter.next()
+    data = next(train_iter)
     cpu_images, cpu_texts = data
     batch_size = cpu_images.size(0)
     print("batch size: "+str(batch_size))
@@ -166,29 +163,25 @@ def trainBatch(net, criterion, optimizer):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument('-i',
-                        '--intel',
-                        type=int,
+    parser.add_argument('-n',
+                        '--model_name',
+                        type=str,
                         required=True,
-                        help='use 1 for enabling intel pytorch optimizations, default is 0')
+                        default="",
+                        help='Name for saved model')
     FLAGS = parser.parse_args()
-    intel_flag = FLAGS.intel
-    if intel_flag:
-        import intel_extension_for_pytorch as ipex  # pylint: disable=E0401
-        crnn = ipex.optimize(crnn, optimizer=optimizer)
-        crnn_net = crnn[0]
-        optimizer_intel = crnn[1]
-        log_filename = os.path.join('./logs/', 'Intel_'+config.saved_model_prefix + '.txt')
-        logging.basicConfig(filename=log_filename, level=logging.DEBUG,force=True)
-        logger = logging.getLogger()
-        print("Intel Pytorch Optimizations has been Enabled!")
-        logger.debug("Intel Pytorch Optimizations has been Enabled!")
-    else:
-        log_filename = os.path.join('./logs/', 'Stock_'+config.saved_model_prefix + '.txt')
-        logging.basicConfig(filename=log_filename, level=logging.DEBUG,force=True)
-        logger = logging.getLogger()
-        device = torch.device('cpu')
-        criterion = criterion.to(device)    
+    config.saved_model_name = FLAGS.model_name
+    import intel_extension_for_pytorch as ipex  # pylint: disable=E0401
+    crnn = ipex.optimize(crnn, optimizer=optimizer)
+    crnn_net = crnn[0]
+    optimizer_intel = crnn[1]
+    if not os.path.exists('output/logs/ocr_module'):
+        os.mkdir('output/logs/ocr_module')
+    log_filename = os.path.join('output/logs/ocr_module/', 'Intel_'+config.saved_model_name + '.txt')
+    logging.basicConfig(filename=log_filename, level=logging.DEBUG,force=True)
+    logger = logging.getLogger()
+    print("Intel Pytorch Optimizations has been Enabled!")
+    logger.debug("Intel Pytorch Optimizations has been Enabled!")   
     
     print("Start of Training")
     logger.debug("Start of Training")
@@ -201,18 +194,12 @@ if __name__ == "__main__":
         i = 0
         n_batch = len(train_loader)
         while i < len(train_loader):
-            if intel_flag:
-                for p in crnn_net.parameters():
-                    p.requires_grad = True
-                crnn_net.train()
-            else:
-                for p in crnn.parameters():
-                    p.requires_grad = True
-                crnn.train()
-            if intel_flag:
-                cost = trainBatch(crnn_net, criterion, optimizer=optimizer_intel)
-            else:
-                cost = trainBatch(crnn, criterion, optimizer)
+           
+            for p in crnn_net.parameters():
+                p.requires_grad = True
+            crnn_net.train()
+            cost = trainBatch(crnn_net, criterion, optimizer=optimizer_intel)
+            
             print('epoch: {} iter: {}/{} Train loss: {:.3f}'.format(epoch, i, n_batch, cost.item()))
             logger.debug('epoch: {} iter: {}/{} Train loss: {:.3f}'.format(epoch, i, n_batch, cost.item()))
             loss_avg.add(cost)
@@ -226,10 +213,8 @@ if __name__ == "__main__":
     print("Inferencing.................")
     logger.debug("Inferencing.................")
     start_pred_time = time.time()
-    if intel_flag:
-        val(crnn_net, test_dataset, criterion, intel=True)
-    else:
-        val(crnn, test_dataset, criterion, intel=False)
+    val(crnn_net, test_dataset, criterion)
+    
     print("Inference time is", time.time()-start_pred_time)
     logger.debug("Inference time is : %f" % (time.time()-start_pred_time))
 

@@ -1,4 +1,4 @@
-# Copyright (C) 2022 Intel Corporation
+# Copyright (C) 2024 Intel Corporation
 # SPDX-License-Identifier: BSD-3-Clause
 import pandas as pd
 import numpy as np
@@ -14,7 +14,6 @@ nltk.download('wordnet')
 nltk.download('omw-1.4')
 
 
-from tensorflow.python.framework import graph_util
 import time
 import tp_inv_cls_data_preprocessing as inv_data_preprocessor
 import tp_inv_cls_cnn_network_creation as inv_cnn_network_creator
@@ -25,11 +24,16 @@ parser = argparse.ArgumentParser()
 parser.add_argument('-hp',
                     '--hyperparameter', default=0,
                     help='train with hyperparameter tuning or not (0|1)')
-
+parser.add_argument('-n',
+                    '--model_name',
+                    type=str,
+                    required=True,
+                    default="",
+                    help='Name for saved model')
 parser.add_argument('-l',
                     '--logfile',
                     type=str,
-                    default='./logs/classification_model_training.txt',
+                    required=True,
                     help="log file to output benchmarking results to")
 parser.add_argument('-p',
                     '--data_path',
@@ -44,7 +48,7 @@ parser.add_argument('-o',
 
 FLAGS = parser.parse_args()
 hp_tuning_flag = int(FLAGS.hyperparameter)
-
+saved_model_name = FLAGS.model_name
 if FLAGS.logfile == "":
      logging.basicConfig(level=logging.DEBUG)
 else:
@@ -81,23 +85,23 @@ def model_saver(model_type_name):
     # This will only save the graph but the variables will not be saved.
     # You have to freeze your model first
     tf.train.write_graph(graph_or_graph_def=sess.graph_def, logdir=model_path,
-                         name=model_type_name, as_text=True)
+                         name=saved_model_name, as_text=True)
 
     # Freeze graph
     graph = tf.get_default_graph()
     input_graph_def = graph.as_graph_def()
     output_node_names = ['output/predictions']
 
-    output_graph_def = graph_util.convert_variables_to_constants(sess, input_graph_def, output_node_names)
+    output_graph_def = tf.compat.v1.graph_util.convert_variables_to_constants(sess, input_graph_def, output_node_names)
     # For some models, we would like to remove training nodes
     # output_graph_def = graph_util.remove_training_nodes(output_graph_def, protected_nodes=None)
-    pb_filepath = os.path.join(model_path, model_type_name + '.pb')
+    pb_filepath = os.path.join(model_path, saved_model_name + '.pb')
     with tf.gfile.GFile(pb_filepath, 'wb') as f:
         f.write(output_graph_def.SerializeToString())
     # =====================Frozen Graph ==============================
     # To save model check points, meta data etc.,
     saver = tf.train.Saver()
-    saver.save(sess, os.path.join(model_path, model_type_name))
+    saver.save(sess, os.path.join(model_path, saved_model_name))
 
 # ============================ Data Preprocessing - Start ========================
 # Data Preprocessing
@@ -221,7 +225,7 @@ elif hp_tuning_flag == 1:
     print_logger("Training model with new best hyper parameters ----> Epoch: " + str(best_hp[0]) + " Batch Size: " + str(best_hp[1]))
     train_epoch_time = normal_training(best_hp[1], best_hp[0], train_epoch_time)
 
-    model_saver('cls_model')
+    model_saver('best_model_obtained_with_hp')
     print_logger("Model with hyper parameter retained model saved successfully!!")
 
     print_logger("Training execution time (Model retraining): " + str(train_epoch_time))
